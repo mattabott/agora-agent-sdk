@@ -183,6 +183,135 @@ class WorldMirror:
             return
         handler(self, ev)
 
+    # ============ walkability + pathfinding ============
+
+    def is_walkable_terrain(self, x: int, y: int) -> bool:
+        """Tile in-bounds and walkable per the static mask. Does NOT account for
+        agents or structures occupying the tile."""
+        if not (0 <= x < self.world_w and 0 <= y < self.world_h):
+            return False
+        return mask_bit(self.walkable_mask, self.world_w, x, y)
+
+    def is_walkable(self, x: int, y: int) -> bool:
+        """Walkable terrain AND not occupied by a live agent."""
+        if not self.is_walkable_terrain(x, y):
+            return False
+        if self.is_occupied(x, y):
+            return False
+        return True
+
+    def is_occupied(self, x: int, y: int) -> bool:
+        return any(a.x == x and a.y == y and a.alive for a in self.agents.values())
+
+    def find_path_step(self, sx: int, sy: int, tx: int, ty: int,
+                       max_nodes: int = 256) -> str | None:
+        """BFS from (sx,sy) to (tx,ty); return the direction name of the FIRST step.
+
+        Ported from agora.agents.reflex.find_path_step (private repo).
+        """
+        if (sx, sy) == (tx, ty):
+            return None
+        queue: deque[tuple[int, int]] = deque([(sx, sy)])
+        parent: dict[tuple[int, int], tuple[int, int] | None] = {(sx, sy): None}
+        found = False
+        while queue and len(parent) < max_nodes:
+            x, y = queue.popleft()
+            if (x, y) == (tx, ty):
+                found = True
+                break
+            for _, (dx, dy) in DIRECTIONS.items():
+                nx, ny = x + dx, y + dy
+                if (nx, ny) in parent:
+                    continue
+                if not self.is_walkable_terrain(nx, ny):
+                    continue
+                if (nx, ny) != (tx, ty) and self.is_occupied(nx, ny):
+                    continue
+                parent[(nx, ny)] = (x, y)
+                queue.append((nx, ny))
+                if (nx, ny) == (tx, ty):
+                    found = True
+                    break
+            if found:
+                break
+        if not found:
+            return None
+        cur = (tx, ty)
+        while parent[cur] != (sx, sy):
+            prev = parent[cur]
+            if prev is None:
+                return None
+            cur = prev
+        step_dx = cur[0] - sx
+        step_dy = cur[1] - sy
+        for name, (dx, dy) in DIRECTIONS.items():
+            if (dx, dy) == (step_dx, step_dy):
+                return name
+        return None
+
+    def nearest_resource(self, ax: int, ay: int, item_type: str) -> tuple[int, int] | None:
+        """Find the closest known tile of `item_type` reachable from (ax,ay).
+        Falls back to cluster centroids when no exact tile is known."""
+        best: tuple[int, int] | None = None
+        best_d = 10**9
+        for (rx, ry), (rtype, rqty) in self.resources.items():
+            if rtype != item_type or rqty <= 0:
+                continue
+            if not self.is_walkable_terrain(rx, ry):
+                has_access = any(
+                    self.is_walkable_terrain(rx + dx, ry + dy)
+                    for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0))
+                )
+                if not has_access:
+                    continue
+            d = max(abs(rx - ax), abs(ry - ay))
+            if d < best_d:
+                best_d = d
+                best = (rx, ry)
+        if best is not None:
+            return best
+        for cluster in self.resource_clusters:
+            if cluster.get("type") != item_type:
+                continue
+            cx, cy = int(cluster["cx"]), int(cluster["cy"])
+            d = max(abs(cx - ax), abs(cy - ay))
+            if d < best_d:
+                best_d = d
+                best = (cx, cy)
+        return best
+
+    # ============ apply_perception (refresh nearby tiles) ============
+
+    def apply_perception(self, perc: dict) -> None:
+        """Apply incremental updates from a perception dict.
+
+        - Updates `current_tick` and self-agent stats.
+        - Refreshes `resources` for the perception's nearby_resources (raggio 3).
+        - Refreshes `structures` for nearby_structures (in case server pushed
+          them via perception but missed a delta).
+        """
+        self.current_tick = max(self.current_tick, int(perc.get("tick", 0)))
+        sa = perc.get("agent_state") or {}
+        if self.self_agent_id and self.self_agent_id in self.agents:
+            agent = self.agents[self.self_agent_id]
+            if "x" in sa:
+                agent.x = int(sa["x"])
+            if "y" in sa:
+                agent.y = int(sa["y"])
+            if "wait_streak" in sa:
+                agent.wait_streak = int(sa["wait_streak"])
+            if "sleep_streak" in sa:
+                agent.sleep_streak = int(sa["sleep_streak"])
+        ax = int(sa.get("x", 0))
+        ay = int(sa.get("y", 0))
+        nearby_set = {(int(r["x"]), int(r["y"])): (r["type"], int(r["qty"]))
+                      for r in perc.get("nearby_resources", [])}
+        for (rx, ry) in list(self.resources.keys()):
+            if max(abs(rx - ax), abs(ry - ay)) <= 3 and (rx, ry) not in nearby_set:
+                del self.resources[(rx, ry)]
+        for (rx, ry), v in nearby_set.items():
+            self.resources[(rx, ry)] = v
+
 
 # ============ event handlers ============
 
