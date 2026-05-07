@@ -4,7 +4,7 @@ Reference: docs/specs/2026-05-07-agora-agent-sdk-design.md §5
 """
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
