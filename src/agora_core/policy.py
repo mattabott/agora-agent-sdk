@@ -185,7 +185,7 @@ def decode_to_decision(
         target = nearby[0]
         return {
             "action": "talk", "target_id": int(target["id"]),
-            "content": "Hey there friend", "thought": "(policy)",
+            "content": "<<USE_NEXT_TALK_LINE>>", "thought": "(policy)",
         }
     if action_name == "give_nearby":
         nearby = perception.get("nearby_agents") or []

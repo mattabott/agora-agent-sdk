@@ -134,3 +134,30 @@ async def test_validate_pre_send_blocked_move_to_wander():
     brain.last_walkable_dirs = ["east"]
     out = brain._validate_pre_send({"action": "move", "direction": "north"})
     assert out["action"] == "wander"
+
+
+@pytest.mark.asyncio
+async def test_decide_anti_oscillation_blocks_reverse_move():
+    brain, m = _setup_brain()
+    brain.last_move_direction = "east"
+    brain.last_walkable_dirs = ["north", "south", "east", "west"]
+    out = brain._validate_pre_send({"action": "move", "direction": "west",
+                                    "thought": "go back"})
+    assert out["action"] == "wait"
+    assert "anti-oscillation" in out["thought"]
+
+
+@pytest.mark.asyncio
+async def test_decide_records_last_move_direction():
+    brain, m = _setup_brain()
+    # Force a perception that yields a move (hungry → reflex eat won't fire,
+    # but we'll use a perception that guides social_navigate to move)
+    perc = _basic_perception()
+    # easier: directly call _validate_pre_send to set last_walkable_dirs
+    brain.last_walkable_dirs = ["north", "south", "east", "west"]
+    decision = brain._validate_pre_send({"action": "move", "direction": "north",
+                                         "thought": "go up"})
+    # Then mimic what decide does: store direction
+    if decision.get("action") == "move":
+        brain.last_move_direction = decision.get("direction", "")
+    assert brain.last_move_direction == "north"

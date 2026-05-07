@@ -166,7 +166,7 @@ class AgoraClient:
 
     def _ws_url(self) -> str:
         scheme = "ws" if self.server.startswith("http://") else "wss"
-        host = self.server.split("//", 1)[1]
+        host = self.server.split("//", 1)[-1]
         return f"{scheme}://{host}/ws/agents/{self.agent_id}?token={self.token}"
 
     async def run(self) -> None:

@@ -63,6 +63,7 @@ class Brain:
         self.recent_lines_by_agent: dict[int, list[str]] = {}
         self.next_talk_line: str = ""
         self.last_walkable_dirs: list[str] = []
+        self.last_move_direction: str = ""
         self.pending_llm_task: asyncio.Task | None = None
         self.pending_dialogue_task: asyncio.Task | None = None
         self.last_llm_decide_tick: int = -10**9
@@ -209,6 +210,14 @@ class Brain:
                     return {"action": "wait", "thought": "(already said)"}
         if a == "move":
             d = decision.get("direction")
+            # Anti-oscillation: if proposed direction is opposite of last move,
+            # downgrade to wait to break a potential ping-pong.
+            OPPOSITES = {
+                "north": "south", "south": "north",
+                "east": "west", "west": "east",
+            }
+            if d and OPPOSITES.get(self.last_move_direction) == d:
+                return {"action": "wait", "thought": "(anti-oscillation)"}
             if d not in self.last_walkable_dirs:
                 return {"action": "wander", "thought": "(blocked)"}
         return decision
@@ -327,6 +336,13 @@ class Brain:
             "action": decision.get("action", "wait"),
             "via": via,
         })
+        # Track last move direction for anti-oscillation in next decide()
+        if decision.get("action") == "move":
+            self.last_move_direction = decision.get("direction", "")
+        elif decision.get("action") not in ("wait",):
+            # Reset when not moving and not waiting (waits don't change position)
+            self.last_move_direction = ""
+
         decision = dict(decision)
         decision["decided_via"] = via
         ok, _ = validate_action_dict(decision)
