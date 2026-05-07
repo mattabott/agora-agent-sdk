@@ -176,3 +176,177 @@ def format_semantic(memory: list[dict]) -> str:
     return "\n".join(
         f"  - [{m['kind']} t{m['tick']}] {m['text'][:120]}" for m in memory
     )
+
+
+# ============ prompt builders ============
+
+def build_user_prompt(
+    *,
+    personality_current: str,
+    sex: str,
+    born_tick: int,
+    current_tick: int,
+    family: dict | None,
+    current_goal: str,
+    perception: dict,
+    inventory: dict[str, int],
+    relations: dict[int, int],
+    agents_by_id: dict,
+    episodic: list[dict],
+    semantic: list[dict] | None = None,
+    wait_streak: int = 0,
+) -> str:
+    """Build the per-tick USER prompt. Mirrors agora.agents.brain.build_user_prompt."""
+    parts: list[str] = []
+    parts.append(f"Identity: {personality_current}")
+    days = age_in_days(born_tick, current_tick)
+    stage = age_stage(days)
+    parts.append(f"Sex: {sex} · Age: {days:.1f} days ({stage})")
+
+    fam_bits = []
+    fam = family or {}
+    if fam.get("mother"):
+        fam_bits.append(f"mother: {fam['mother']['name']}")
+    if fam.get("father"):
+        fam_bits.append(f"father: {fam['father']['name']}")
+    children = [c["name"] for c in fam.get("children", []) if c.get("alive")]
+    if children:
+        fam_bits.append(f"children: {', '.join(children)}")
+    if fam_bits:
+        parts.append("Family: " + "; ".join(fam_bits))
+
+    if current_goal:
+        parts.append(f"Current goal: {current_goal}")
+
+    tod = time_of_day(current_tick)
+    parts.append(
+        f"Status t{current_tick} (day {tod['day_n']}, {tod['phase']}): "
+        f"pos {perception.get('position') or [0, 0]} "
+        f"terrain {perception.get('terrain_here', '?')} "
+        f"energy {perception.get('energy', 0)} "
+        f"mood {perception.get('mood', 0)} "
+        f"hunger {perception.get('hunger', 0)}"
+    )
+
+    walk = perception.get("walkable_dirs") or []
+    parts.append(
+        "You can move: " + (", ".join(walk) if walk else "NONE (blocked, choose another action)")
+    )
+
+    if wait_streak >= 3:
+        parts.append(
+            f"NOTE: you've waited {wait_streak} times in a row. "
+            "Time to move, talk, explore or build something."
+        )
+
+    events = perception.get("world_events") or []
+    if events:
+        ev_strs = []
+        for e in events:
+            if e.get("type") == "rain":
+                ev_strs.append("raining (berries respawn)")
+            elif e.get("type") == "fire":
+                ev_strs.append(f"fire at ({e.get('x',0)},{e.get('y',0)}) - destroys wood")
+            else:
+                ev_strs.append(e.get("type", "?"))
+        parts.append(f"World events: {'; '.join(ev_strs)}")
+
+    parts.append(f"Visible around: {perception.get('visible_around', '')}")
+
+    if perception.get("nearby_agents"):
+        parts.append(f"Nearby agents: {format_nearby(perception['nearby_agents'])}")
+
+    res_str = format_resources(
+        perception.get("nearby_resources") or [],
+        perception.get("here_resource"),
+    )
+    if res_str != "(none)":
+        parts.append(f"Resources: {res_str}")
+
+    parts.append(f"Inventory: {format_inventory(inventory)}")
+
+    if relations:
+        parts.append(f"Relations: {format_relations(relations, agents_by_id)}")
+
+    if any(inventory.get(k, 0) > 0 for k in ("wood", "stone", "iron_ore")):
+        recipes = format_recipes_for_user(inventory)
+        if "(none)" not in recipes:
+            parts.append(f"Crafting:\n{recipes}")
+
+    if perception.get("here_structure") is None and any(
+        inventory.get(k, 0) > 0 for k in ("wood", "stone", "iron_ore")
+    ):
+        structs = format_structures_for_user(inventory)
+        if "(none)" not in structs:
+            parts.append(f"Building (you can build here):\n{structs}")
+
+    if any(inventory.get(k, 0) > 0 for k in EDIBLE_ITEMS):
+        eds = ", ".join(
+            f"{k}({inventory.get(k, 0)})" for k in EDIBLE_ITEMS if inventory.get(k, 0) > 0
+        )
+        parts.append(f"Edible items: {eds}")
+
+    if episodic:
+        parts.append(f"Recent memory:\n{format_episodic(episodic)}")
+    if semantic:
+        parts.append(f"Relevant memories:\n{format_semantic(semantic)}")
+
+    parts.append("Choose ONE action. Reply with a single JSON.")
+    return "\n\n".join(parts)
+
+
+def build_dialogue_user_prompt(
+    *,
+    self_name: str,
+    self_x: int,
+    self_y: int,
+    mood: int,
+    hunger: int,
+    energy: int,
+    current_tick: int,
+    last_thought: str,
+    current_goal: str,
+    last_reflection: str,
+    partner_name: str,
+    nearby_resources: list[tuple[str, int]],
+    nearby_structures: list[str],
+    ongoing_events: list[str],
+    recent_dialogue_text: str,
+) -> str:
+    """Build the dialogue gen USER prompt with rich context.
+
+    Ports agora.agents.brain._format_dialogue_context (private repo) but takes
+    precomputed inputs (the world walking is done by the caller using WorldMirror).
+    """
+    PHASE_EN = {"dawn": "dawn", "day": "daytime", "dusk": "dusk", "night": "night"}
+    parts: list[str] = []
+    parts.append(
+        f"Body: mood {mood}/100, hunger {hunger}/100, energy {energy}/100."
+    )
+    tod = time_of_day(current_tick)
+    parts.append(f"It's {PHASE_EN.get(tod['phase'], tod['phase'])}.")
+
+    visible_bits = []
+    if nearby_resources:
+        items = ", ".join(f"{k}({v})" for k, v in nearby_resources[:4])
+        visible_bits.append(f"resources nearby: {items}")
+    if nearby_structures:
+        visible_bits.append(f"structures: {', '.join(nearby_structures[:3])}")
+    if ongoing_events:
+        visible_bits.append(f"ongoing: {', '.join(ongoing_events[:3])}")
+    if visible_bits:
+        parts.append("Around you: " + "; ".join(visible_bits) + ".")
+    else:
+        parts.append("Around you nothing notable.")
+
+    if last_thought and not last_thought.startswith("("):
+        parts.append(f"You were thinking: \"{last_thought[:120]}\".")
+    if current_goal:
+        parts.append(f"Your goal: {current_goal[:120]}.")
+    if last_reflection:
+        parts.append(f"Recent reflection of yours: \"{last_reflection[:140]}\".")
+
+    parts.append(f"Recent exchanges between you and {partner_name}:")
+    parts.append(recent_dialogue_text or "  (first time talking)")
+    parts.append("\nWhat do you say now? One spoken sentence, no quotes.")
+    return "\n".join(parts)
