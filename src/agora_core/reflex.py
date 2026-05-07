@@ -165,12 +165,11 @@ def try_reflex(
                     return {"action": "move", "direction": c,
                             "thought": "stepping away to make room for a new hut"}
 
-    # 4c. Build hut: only when stone not yet at target (agent is still in
-    # "early-game" accumulation phase). Once stone_done, the LLM decides.
+    # 4c. Build hut
     n_alive_agents = sum(1 for a in mirror.agents.values() if a.alive)
     n_huts = sum(1 for info in mirror.structures.values() if info.type == "hut")
     hut_cap = max(4, n_alive_agents * 2)
-    if inventory.get("wood", 0) >= 5 and n_huts < hut_cap and not stone_done:
+    if inventory.get("wood", 0) >= 5 and n_huts < hut_cap:
         on_resource = perception.get("here_resource") is not None
         on_struct = perception.get("here_structure") is not None
         if not on_resource and not on_struct:
@@ -223,11 +222,10 @@ def try_reflex(
                     return {"action": "move", "direction": d,
                             "thought": f"going to storage to fetch {item_w}"}
 
-    # 4c2. Build storage: same gate as hut — only when stone not yet at target.
+    # 4c2. Build storage
     storages = [(sx, sy) for (sx, sy), info in mirror.structures.items()
                 if info.type == "storage"]
     if (inventory.get("wood", 0) >= 3 and inventory.get("stone", 0) >= 2
-            and not stone_done
             and perception.get("here_resource") is None
             and perception.get("here_structure") is None):
         nearest_st_d = min(

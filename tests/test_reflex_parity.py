@@ -129,7 +129,12 @@ def test_reflex_rests_when_low_energy_at_night_no_hut():
 def test_reflex_returns_none_when_idle():
     m = _basic_mirror()
     agent = _self_agent(m)
-    inv = {"berry": 5, "wood": 6, "stone": 4, "axe": 1, "pickaxe": 1}
+    # Inventory tuned to NOT trigger any reflex branch:
+    # - berry/wood/stone at INV_MIN exactly → no withdraw
+    # - wood<3 → no build storage; wood<5 → no build hut
+    # - axe + pickaxe owned → no craft
+    # - no excess to deposit, no nearby agents, daytime → no propose/shelter
+    inv = {"berry": 5, "wood": 2, "stone": 1, "axe": 1, "pickaxe": 1}
     perc = _basic_perception(tick=60)
     out = try_reflex(m, agent, perc, inv, hunger=10, energy=80)
     assert out is None
