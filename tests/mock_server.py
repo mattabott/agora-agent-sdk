@@ -78,23 +78,38 @@ def make_mock_app() -> tuple[FastAPI, MockState]:
             "structures": [], "resource_clusters": [],
             "storage_summary": {}, "world_events": [],
         }))
+        def _snapshot_msg(tick: int = 0) -> str:
+            return json.dumps({
+                "type": "snapshot", "tick": tick,
+                "walkable_mask": _walkable_b64(),
+                "agents": [{"id": agent_id, "name": "Self",
+                             "x": 4, "y": 4, "color": "#fff",
+                             "sex": "F", "alive": True, "born_tick": 0}],
+                "structures": [], "resource_clusters": [],
+                "storage_summary": {}, "world_events": [],
+            })
+
         try:
+            # Drain any pre-loop messages (e.g. request_snapshot sent by client
+            # immediately after connect, before the first perception is ready).
+            import asyncio as _asyncio
+            try:
+                while True:
+                    raw = await _asyncio.wait_for(ws.receive_text(), timeout=0.05)
+                    msg = json.loads(raw)
+                    if msg.get("type") == "request_snapshot":
+                        await ws.send_text(_snapshot_msg(0))
+                    # pong and other pre-loop messages are silently consumed
+            except _asyncio.TimeoutError:
+                pass
+
             for perc in state.perception_script:
                 await ws.send_text(json.dumps(perc))
                 while True:
                     raw = await ws.receive_text()
                     msg = json.loads(raw)
                     if msg.get("type") == "request_snapshot":
-                        await ws.send_text(json.dumps({
-                            "type": "snapshot", "tick": int(perc.get("tick", 0)),
-                            "walkable_mask": _walkable_b64(),
-                            "agents": [{"id": agent_id, "name": "Self",
-                                         "x": 4, "y": 4, "color": "#fff",
-                                         "sex": "F", "alive": True,
-                                         "born_tick": 0}],
-                            "structures": [], "resource_clusters": [],
-                            "storage_summary": {}, "world_events": [],
-                        }))
+                        await ws.send_text(_snapshot_msg(int(perc.get("tick", 0))))
                         continue
                     if msg.get("type") == "pong":
                         continue
