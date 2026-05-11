@@ -414,15 +414,28 @@ def _on_storage_changed(m: WorldMirror, ev: dict) -> None:
 
 
 def _on_world_event_started(m: WorldMirror, ev: dict) -> None:
-    e = ev["event"]
-    m.events[int(e["id"])] = WorldEvent(
-        id=int(e["id"]),
-        type=e["type"],
-        x=int(e.get("x", 0)),
-        y=int(e.get("y", 0)),
-        radius=int(e.get("radius", 0)),
-        started_tick=int(e.get("started_tick", m.current_tick)),
-        ends_tick=int(e.get("ends_tick", 0)),
+    # The server may send nested ("event": {...}) or flat (event_id, event_type, ...).
+    e = ev.get("event") or {
+        "id": ev.get("event_id"),
+        "type": ev.get("event_type"),
+        "x": ev.get("x"),
+        "y": ev.get("y"),
+        "radius": ev.get("radius"),
+        "started_tick": ev.get("started_tick"),
+        "ends_tick": ev.get("ends_tick"),
+    }
+    eid = e.get("id")
+    etype = e.get("type")
+    if eid is None or etype is None:
+        return
+    m.events[int(eid)] = WorldEvent(
+        id=int(eid),
+        type=str(etype),
+        x=int(e.get("x") or 0),
+        y=int(e.get("y") or 0),
+        radius=int(e.get("radius") or 0),
+        started_tick=int(e.get("started_tick") or m.current_tick),
+        ends_tick=int(e.get("ends_tick") or 0),
     )
 
 
