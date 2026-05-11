@@ -18,6 +18,7 @@ from agora_agent_sdk.client import (
     default_token_path, delete_token, http_join, read_token, write_token,
 )
 from agora_agent_sdk.llm import NoOpLLM, OllamaClient
+from agora_agent_sdk.logs_poller import LogsPoller
 from agora_core.policy import Policy
 from agora_core.world_mirror import WorldMirror, pack_walkable_mask
 
@@ -48,6 +49,15 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="0 = infinite")
     p.add_argument("--policy-file", type=Path, default=None,
                    help="optional .pkl with a trained MLP policy")
+    p.add_argument("--tail-logs", action="store_true",
+                   help="periodically poll GET /api/agents/{id}/logs and "
+                        "stream new observations (decision, action_result, "
+                        "dialogue_received, ...) to stdout. Useful for debug.")
+    p.add_argument("--logs-interval", type=int, default=30,
+                   help="seconds between log polls (default 30, only with --tail-logs)")
+    p.add_argument("--logs-kind", default="",
+                   help="comma-separated kinds to filter logs poller "
+                        "(e.g. 'decision,action_result'). Default: all kinds.")
     p.add_argument("--log-level", default="INFO",
                    choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     return p
@@ -115,6 +125,22 @@ async def _async_main(ns: argparse.Namespace) -> int:
         max_reconnect_attempts=ns.max_reconnect_attempts,
     )
 
+    # Logs poller opzionale: gira in parallelo al client WS, fetcha
+    # GET /api/agents/{id}/logs?since=N ogni N secondi e stampa le nuove
+    # observation. Si ferma quando il client esce (stop event condiviso).
+    poller_stop = asyncio.Event()
+    poller_task: asyncio.Task | None = None
+    if ns.tail_logs:
+        poller = LogsPoller(
+            server=ns.server,
+            agent_id=agent_id,
+            interval_s=float(ns.logs_interval),
+            kind=ns.logs_kind,
+        )
+        poller_task = asyncio.create_task(
+            poller.run(poller_stop), name="logs_poller",
+        )
+
     try:
         await client.run()
         return 0
@@ -128,6 +154,12 @@ async def _async_main(ns: argparse.Namespace) -> int:
     except KeyboardInterrupt:
         return 130
     finally:
+        poller_stop.set()
+        if poller_task is not None:
+            try:
+                await asyncio.wait_for(poller_task, timeout=2.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                poller_task.cancel()
         await llm.aclose()
 
 
