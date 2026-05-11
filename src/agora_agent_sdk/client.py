@@ -238,14 +238,20 @@ class AgoraClient:
                                             "thought", "decided_via")},
             ).model_dump(exclude_none=True))
         elif mtype == "event":
-            self.brain.mirror.apply_event(msg)
+            try:
+                self.brain.mirror.apply_event(msg)
+            except Exception:
+                log.exception("apply_event failed for event=%r", msg)
             kind = msg.get("kind")
             if kind == "agent_died" and int(msg.get("agent_id", 0)) == self.agent_id:
                 a = self.brain.mirror.agents.get(self.agent_id)
                 name = a.name if a else "<unknown>"
                 tick = int(msg.get("tick", 0))
                 raise AgentDiedExit(name, tick)
-            self.brain.push_event_to_episodic(msg)
+            try:
+                self.brain.push_event_to_episodic(msg)
+            except Exception:
+                log.exception("push_event_to_episodic failed for event=%r", msg)
         elif mtype == "result":
             self.brain.push_episodic({
                 "kind": "action_result", "tick": int(msg.get("tick_ack", 0)),

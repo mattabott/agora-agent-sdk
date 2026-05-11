@@ -326,12 +326,15 @@ def _on_tile_update(m: WorldMirror, ev: dict) -> None:
 
 
 def _on_structure_built(m: WorldMirror, ev: dict) -> None:
+    sid = ev.get("structure_id", ev.get("id"))
+    if sid is None or "x" not in ev or "y" not in ev or "structure_type" not in ev:
+        return
     info = StructureInfo(
-        id=int(ev["structure_id"]),
+        id=int(sid),
         x=int(ev["x"]),
         y=int(ev["y"]),
         type=ev["structure_type"],
-        owner_id=int(ev["owner_id"]),
+        owner_id=int(ev.get("owner_id", 0)),
         built_tick=int(ev.get("tick", m.current_tick)),
         color=ev.get("color", "#888"),
         label=ev.get("label", ""),
@@ -395,7 +398,10 @@ def _on_agent_action(m: WorldMirror, ev: dict) -> None:
 
 
 def _on_storage_changed(m: WorldMirror, ev: dict) -> None:
-    sid = int(ev["structure_id"])
+    sid_raw = ev.get("structure_id", ev.get("id"))
+    if sid_raw is None or "item" not in ev or "qty" not in ev:
+        return
+    sid = int(sid_raw)
     item = ev["item"]
     qty = int(ev["qty"])
     bucket = m.storage_summary.setdefault(sid, {})
