@@ -10,6 +10,19 @@ _No unreleased changes yet._
 
 ---
 
+## [0.2.0] — 2026-05-12
+
+### Added
+
+- **`PerceptionMsg.escape_dirs: list[str]`** — direzioni cardinali con un walkable raggiungibile entro ~5 step via BFS shallow lato server (parity con agora v0.2). Risolve i casi in cui l'agente sta fermo in cul-de-sac perche' `walkable_dirs` mostra solo i 4 vicini immediati (es. riva di un lago): adesso l'agente sa in che quadrante c'e' open space anche se il primo step va in altra direzione.
+- **Prompt template di default**: hint `Open space within 5 steps toward: ... (go around obstacles)` quando `walkable_dirs` e' ristretto (≤2). Niente rumore quando l'agente e' all'aperto.
+
+### Compatibility
+
+- Additivo, no breaking. Server `< v0.2`: campo assente -> default `[]` -> niente hint, comportamento identico a 0.1.x.
+
+---
+
 ## [0.1.0] — 2026-05-12
 
 First public release. Wire protocol `v1`.
