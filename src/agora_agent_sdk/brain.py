@@ -212,12 +212,17 @@ class Brain:
         if a == "move":
             d = decision.get("direction")
             # Anti-oscillation: if proposed direction is opposite of last move,
-            # downgrade to wait to break a potential ping-pong.
+            # downgrade to wait to break a potential ping-pong. Reset
+            # last_move_direction subito: senza, il tick successivo il brain
+            # ripropone la stessa direzione opposta -> anti-osc blocca di
+            # nuovo -> loop infinito (visto su Sandro fermo per centinaia di
+            # tick a (5,54) sulla sponda di un lago).
             OPPOSITES = {
                 "north": "south", "south": "north",
                 "east": "west", "west": "east",
             }
             if d and OPPOSITES.get(self.last_move_direction) == d:
+                self.last_move_direction = ""
                 return {"action": "wait", "thought": "(anti-oscillation)"}
             if d not in self.last_walkable_dirs:
                 return {"action": "wander", "thought": "(blocked)"}

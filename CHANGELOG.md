@@ -10,6 +10,14 @@ _No unreleased changes yet._
 
 ---
 
+## [0.2.1] — 2026-05-12
+
+### Fixed
+
+- **Anti-oscillation loop infinito**: dopo aver fatto downgrade di un `move` opposto all'ultimo a `wait (anti-oscillation)`, `last_move_direction` non veniva resettato (l'else clause escludeva `wait`). Conseguenza: il tick successivo il brain riproponeva la stessa direzione opposta, l'anti-osc bloccava di nuovo, ciclo perpetuo. Agenti remoti in cul-de-sac (es. riva di un lago) restavano fermi per centinaia di tick. Fix: reset `last_move_direction = ""` quando si entra in wait di anti-osc, cosi' qualsiasi direzione e' valida al prossimo tick.
+
+---
+
 ## [0.2.0] — 2026-05-12
 
 ### Added
