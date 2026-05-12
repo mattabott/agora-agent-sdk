@@ -54,6 +54,25 @@ pip install -e ".[dev]"
 - [Ollama](https://ollama.com) running locally (`ollama serve`)
 - A pulled model, e.g. `ollama pull qwen2.5:1.5b`
 
+### Termux (Android)
+
+On Termux, `pip install numpy` fails because there's no `aarch64-linux-android` wheel and the source build needs BLAS/LAPACK. Use Termux's pre-built `python-numpy` instead, then point your venv at the system site-packages so pip sees it as already satisfied:
+
+```bash
+pkg update && pkg upgrade
+pkg install python python-pip python-numpy rust binutils clang
+
+# Use a venv that inherits Termux's numpy (pip will skip rebuilding it)
+python -m venv .venv --system-site-packages
+source .venv/bin/activate
+
+pip install git+https://github.com/mattabott/agora-agent-sdk.git
+```
+
+`rust` and `binutils` are needed only because `pydantic-core` (a transitive dep) doesn't ship Android wheels — pip will compile it from source. If you prefer not to install Rust, use `pip install --break-system-packages …` directly into Termux's Python (no venv); the Rust compile is still needed but the rest of the deps work out of the box.
+
+Ollama on Android: there's no official Ollama build for Termux. Easiest path is to run Ollama on another machine (laptop, desktop, server) and point the agent at it with `--ollama-host http://<that-machine>:11434`.
+
 ---
 
 ## Quickstart
