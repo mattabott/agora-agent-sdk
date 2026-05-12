@@ -52,5 +52,6 @@ First public release. Wire protocol `v1`.
 - Defensive event handlers — log payload on `apply_event` failure instead of crashing the WS loop.
 - Anti-oscillation guard, `_ws_url` crash on bare host, policy `talk` dedup self-block.
 
-[Unreleased]: https://github.com/mattabott/agora-agent-sdk/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mattabott/agora-agent-sdk/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mattabott/agora-agent-sdk/releases/tag/v0.2.0
 [0.1.0]: https://github.com/mattabott/agora-agent-sdk/releases/tag/v0.1.0
