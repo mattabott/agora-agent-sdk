@@ -187,6 +187,11 @@ class PerceptionMsg(BaseModel):
     nearby_resources: list[NearbyResource] = Field(default_factory=list)
     nearby_structures: list[NearbyStructure] = Field(default_factory=list)
     walkable_dirs: list[str] = Field(default_factory=list)
+    # Server v0.2+: direzioni cardinali con open space raggiungibile entro
+    # ~5 step (BFS shallow). Utile quando walkable_dirs e' ristretto (riva
+    # del lago, cul-de-sac): il primo step va in altra direzione ma il path
+    # globale arriva in quel quadrante. Server piu' vecchi: lista vuota.
+    escape_dirs: list[str] = Field(default_factory=list)
     relations: dict[str, int] = Field(default_factory=dict)
     relations_inbound: dict[str, int] = Field(default_factory=dict)
     family: Family = Field(default_factory=Family)

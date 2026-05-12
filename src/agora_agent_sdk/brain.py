@@ -122,6 +122,7 @@ class Brain:
                     "mood": int(sa.get("mood", 0)),
                     "hunger": int(sa.get("hunger", 0)),
                     "walkable_dirs": perception.get("walkable_dirs", []),
+                    "escape_dirs": perception.get("escape_dirs", []),
                     "visible_around": perception.get("visible_around", ""),
                     "nearby_agents": perception.get("nearby_agents", []),
                     "nearby_resources": perception.get("nearby_resources", []),

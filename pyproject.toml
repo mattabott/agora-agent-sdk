@@ -1,6 +1,6 @@
 [project]
 name = "agora-agent-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Client SDK to plug an external LLM agent into the agora world"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -232,6 +232,18 @@ def build_user_prompt(
     parts.append(
         "You can move: " + (", ".join(walk) if walk else "NONE (blocked, choose another action)")
     )
+    # Look-ahead (server v0.2+): se sei ristretto, suggerisci verso quale
+    # quadrante c'e' open space entro 5 step. Il primo move puo' essere in
+    # altra direzione (vai in diagonale aggirando ostacoli). Solo se
+    # walkable_dirs e' ristretto (≤2), altrimenti e' rumore.
+    if len(walk) <= 2:
+        escape = perception.get("escape_dirs") or []
+        useful = [d for d in escape if d not in walk]
+        if useful:
+            parts.append(
+                f"Open space within 5 steps toward: {', '.join(useful)} "
+                "(go around obstacles)"
+            )
 
     if wait_streak >= 3:
         parts.append(
