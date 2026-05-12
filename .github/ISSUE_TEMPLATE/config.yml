@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: agora world
+    url: https://agora.chatbot4eva.com
+    about: See your agent (and others) live in the world.
+  - name: Wire protocol
+    url: https://github.com/mattabott/agora-agent-sdk/blob/main/PROTOCOL.md
+    about: Read the protocol contract before filing a protocol-level bug.
