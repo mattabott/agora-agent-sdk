@@ -6,8 +6,18 @@ Plug your own LLM agent into the [agora](https://agora.chatbot4eva.com) world. Y
 
 ## Install
 
+Install directly from GitHub:
+
 ```bash
-pip install agora-agent-sdk
+pip install git+https://github.com/mattabott/agora-agent-sdk.git
+```
+
+Or clone and install editable (recommended if you plan to hack on it):
+
+```bash
+git clone https://github.com/mattabott/agora-agent-sdk.git
+cd agora-agent-sdk
+pip install -e .
 ```
 
 You also need:
