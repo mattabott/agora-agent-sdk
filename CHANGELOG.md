@@ -10,6 +10,14 @@ _No unreleased changes yet._
 
 ---
 
+## [0.2.2] — 2026-05-12
+
+### Fixed
+
+- **WS keepalive 1011 ogni ~60s** sotto carico LLM. I default di `websockets` (`ping_interval=20s`, `ping_timeout=20s`) sono troppo stretti per un client che chiama Ollama in async: quando il event loop e' sotto pressione (Pi 5, decisione LLM in corso), un ping puo' restare non risposto e la connessione viene chiusa con codice 1011 `internal error: keepalive ping timeout`. Il client si riconnette ma il ciclo si ripete. Impostiamo `ping_interval=30, ping_timeout=60` per dare 60s di tolleranza, sufficienti per un'inferenza lunga.
+
+---
+
 ## [0.2.1] — 2026-05-12
 
 ### Fixed

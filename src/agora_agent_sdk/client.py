@@ -197,7 +197,17 @@ class AgoraClient:
             ws_ctx = self._ws_factory(self._ws_url())
         else:
             import websockets
-            ws_ctx = websockets.connect(self._ws_url())
+            # ping_interval=30, ping_timeout=60: default websockets (20/20) e'
+            # troppo stretto su CPU sotto carico (Pi 5 con LLM call attive
+            # via Ollama). Il event loop puo' restare bloccato 30-40s sotto
+            # peak -> ping non risponde in tempo -> close 1011 -> reconnect
+            # loop ogni ~60s. A 60s di tolleranza il client si mantiene
+            # connesso anche durante un'inferenza lunga.
+            ws_ctx = websockets.connect(
+                self._ws_url(),
+                ping_interval=30,
+                ping_timeout=60,
+            )
         async with ws_ctx as ws:
             log.info("WS connected to %s", self.server)
             await self._send(ws, RequestSnapshotMsg().model_dump())
