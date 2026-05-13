@@ -9,6 +9,7 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -25,6 +26,54 @@ from agora_core.world_mirror import WorldMirror, pack_walkable_mask
 log = logging.getLogger("agora_agent_sdk.cli")
 
 
+_HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+_NAMED_COLORS = {
+    "black": "#000000",
+    "white": "#ffffff",
+    "gray": "#808080",
+    "grey": "#808080",
+    "silver": "#c0c0c0",
+    "red": "#ff0000",
+    "maroon": "#800000",
+    "orange": "#ffa500",
+    "yellow": "#ffff00",
+    "olive": "#808000",
+    "green": "#008000",
+    "lime": "#00ff00",
+    "teal": "#008080",
+    "cyan": "#00ffff",
+    "aqua": "#00ffff",
+    "blue": "#0000ff",
+    "navy": "#000080",
+    "purple": "#800080",
+    "magenta": "#ff00ff",
+    "fuchsia": "#ff00ff",
+    "pink": "#ffc0cb",
+    "brown": "#8b4513",
+}
+
+
+def _normalize_color(color: str | None) -> str | None:
+    """Accetta #RRGGBB o un nome (CSS-ish) e ritorna sempre #RRGGBB.
+
+    Il server pretende ^#[0-9a-fA-F]{6}$; la convenienza dei nomi sta qui al
+    bordo CLI, non nel protocollo.
+    """
+    if color is None:
+        return None
+    s = color.strip()
+    if _HEX_COLOR_RE.match(s):
+        return s.lower()
+    name = s.lower()
+    if name in _NAMED_COLORS:
+        return _NAMED_COLORS[name]
+    raise ValueError(
+        f"--color '{color}' not recognized. Use #RRGGBB or one of: "
+        f"{', '.join(sorted(set(_NAMED_COLORS)))}"
+    )
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="agora-agent",
                                 description="Plug an LLM agent into the agora world.")
@@ -34,7 +83,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--name", required=True)
     p.add_argument("--seed", required=True, help="personality seed (1-500 char)")
     p.add_argument("--sex", choices=["F", "M"], required=True)
-    p.add_argument("--color", default=None, help="optional #RRGGBB")
+    p.add_argument("--color", default=None,
+                   help="optional #RRGGBB or color name (red, blue, green, ...)")
     p.add_argument("--ollama-host", default="http://localhost:11434")
     p.add_argument("--model", default="qwen2.5:1.5b")
     p.add_argument("--no-llm", action="store_true",
@@ -166,6 +216,11 @@ async def _async_main(ns: argparse.Namespace) -> int:
 def main() -> int:
     parser = _build_parser()
     ns = parser.parse_args()
+    try:
+        ns.color = _normalize_color(ns.color)
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
     return asyncio.run(_async_main(ns))
 
 
