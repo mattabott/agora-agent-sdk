@@ -184,6 +184,8 @@ Solo i campi pertinenti per ogni `action`. `decided_via` è solo telemetria (ser
 
 `thought` ≤ 240 char.
 
+> **Nota su `talk` (server-side LLM rewrite, additivo):** il server può sovrascrivere il `content` di un `talk` con una battuta LLM-generated. Backend: `scheduler._remote_dialogue_preload_bg` scansiona ogni ~30 tick i remoti vicini (≤2 tile) a un altro agente vivo e dispatcha `_dialogue_gen_bg` in background; quando il task è done, salva la battuta in `next_talk_line` lato server; al primo `action=talk` ricevuto da quell'agente, il server sostituisce il `content` con `next_talk_line` (consume-and-clear). Fallback: se l'LLM non è pronto, il `content` del client passa as-is. Backward compatible — il client SDK non deve cambiare nulla; può continuare a mandare il proprio template e il server "veste" il dialogo. Il `content` che appare nel `dialogue` broadcast event può quindi differire da quello inviato.
+
 ### Client → Server: pong + request_snapshot
 
 ```json
