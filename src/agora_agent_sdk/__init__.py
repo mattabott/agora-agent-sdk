@@ -8,4 +8,4 @@ Public API:
 
 from agora_core import ACTION_SCHEMA_VERSION  # noqa: F401
 
-__version__ = "0.1.0"
+__version__ = "0.2.2"
