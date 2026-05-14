@@ -128,6 +128,67 @@ class AgentDiedExit(Exception):
         self.tick = tick
 
 
+class CapacityFullError(Exception):
+    """Server ha rifiutato la connessione WS con WS_CLOSE_AT_CAPACITY (4429):
+    le sessioni remote attive sono al limite. Il caller dovrebbe pollare
+    /api/remote/status finche' available > 0, poi ritentare."""
+
+    def __init__(self, status: dict | None = None, reason: str = ""):
+        super().__init__(f"server at capacity: {status or reason}")
+        self.status = status or {}
+        self.reason = reason
+
+
+# Close code numero (matched con server: ws_agents.WS_CLOSE_AT_CAPACITY)
+WS_CLOSE_AT_CAPACITY = 4429
+
+
+async def http_remote_status(
+    server: str, *, timeout: float = 5.0,
+) -> dict:
+    """GET /api/remote/status. Ritorna dict con connected, limit, available,
+    accepting_joins. Usato prima del connect per sapere se ci sono slot."""
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.get(f"{server.rstrip('/')}/api/remote/status")
+        r.raise_for_status()
+        return r.json()
+
+
+async def wait_for_slot(
+    server: str,
+    *,
+    poll_interval_s: float = 30.0,
+    on_wait: Callable[[dict], None] | None = None,
+    timeout_s: float | None = None,
+) -> dict:
+    """Polla /api/remote/status finche' available > 0 (almeno uno slot WS
+    libero) e ritorna lo status finale. `on_wait(status)` chiamato ad ogni
+    iterazione in cui lo slot non e' libero — utile per stampare un messaggio
+    all'utente esterno. `timeout_s` opzionale: se superato raise TimeoutError.
+    """
+    loop = asyncio.get_event_loop()
+    start = loop.time()
+    while True:
+        try:
+            status = await http_remote_status(server)
+        except Exception as e:
+            log.warning("remote status check failed: %s", e)
+            status = {"connected": -1, "limit": -1, "available": 0,
+                      "accepting_joins": False, "error": str(e)}
+        if status.get("available", 0) > 0:
+            return status
+        if on_wait is not None:
+            try:
+                on_wait(status)
+            except Exception:
+                log.exception("on_wait callback failed")
+        if timeout_s is not None and (loop.time() - start) >= timeout_s:
+            raise asyncio.TimeoutError(
+                f"wait_for_slot timed out after {timeout_s}s, last status={status}"
+            )
+        await asyncio.sleep(poll_interval_s)
+
+
 class AgoraClient:
     """WebSocket client that drives the brain loop."""
 
@@ -170,7 +231,12 @@ class AgoraClient:
         return f"{scheme}://{host}/ws/agents/{self.agent_id}?token={self.token}"
 
     async def run(self) -> None:
-        """Main loop with reconnect."""
+        """Main loop with reconnect.
+
+        Su WS_CLOSE_AT_CAPACITY (4429) il server e' pieno: aspettiamo che
+        si liberi uno slot pollando /api/remote/status, poi ritentiamo.
+        Lo user-facing log dice 'queueing for free slot...'.
+        """
         attempt = 0
         backoff = 1.0
         while not self._stop.is_set():
@@ -181,6 +247,19 @@ class AgoraClient:
                 if self.token_path is not None:
                     delete_token(self.token_path)
                 raise
+            except CapacityFullError as e:
+                log.info(
+                    "server at capacity (%s), waiting for a free slot...",
+                    e.status,
+                )
+                def _on_wait(st: dict) -> None:
+                    log.info(
+                        "still waiting: %d/%d connected, retry in 30s...",
+                        st.get("connected", 0), st.get("limit", 0),
+                    )
+                await wait_for_slot(self.server, on_wait=_on_wait)
+                log.info("slot available, reconnecting...")
+                backoff = 1.0  # reset backoff post-queue
             except Exception as e:
                 log.warning("WS loop error: %s", e)
                 attempt += 1
@@ -208,10 +287,25 @@ class AgoraClient:
                 ping_interval=30,
                 ping_timeout=60,
             )
-        async with ws_ctx as ws:
-            log.info("WS connected to %s", self.server)
-            await self._send(ws, RequestSnapshotMsg().model_dump())
-            await self._loop(ws)
+        try:
+            async with ws_ctx as ws:
+                log.info("WS connected to %s", self.server)
+                await self._send(ws, RequestSnapshotMsg().model_dump())
+                await self._loop(ws)
+        except Exception as e:
+            # Captura close-code 4429 (server pieno) e lo rilancia come
+            # CapacityFullError, cosi' run() lo distingue dal retry normale.
+            code = None
+            rcvd = getattr(e, "rcvd", None)
+            if rcvd is not None:
+                code = getattr(rcvd, "code", None)
+            if code is None:
+                code = getattr(e, "code", None)
+            if code == WS_CLOSE_AT_CAPACITY:
+                raise CapacityFullError(
+                    reason=getattr(e, "reason", "") or str(e),
+                )
+            raise
 
     async def _send(self, ws, payload: dict) -> None:
         await ws.send(json.dumps(payload))

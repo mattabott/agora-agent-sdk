@@ -16,7 +16,8 @@ from pathlib import Path
 from agora_agent_sdk.brain import Brain
 from agora_agent_sdk.client import (
     AgentDiedExit, AgoraClient, JoinError,
-    default_token_path, delete_token, http_join, read_token, write_token,
+    default_token_path, delete_token, http_join, read_token, wait_for_slot,
+    write_token,
 )
 from agora_agent_sdk.llm import NoOpLLM, OllamaClient
 from agora_agent_sdk.logs_poller import LogsPoller
@@ -129,6 +130,21 @@ async def _async_main(ns: argparse.Namespace) -> int:
                  agent_id, token_path)
         world_w, world_h = 64, 64
     else:
+        # Pre-check capacity: se il server e' pieno, mettiamoci in coda
+        # prima di consumare un slot DB con un join che non potra' connettersi.
+        def _on_queue_wait(st: dict) -> None:
+            log.info(
+                "agora server full: %d/%d agents connected. Queueing, retry in 30s...",
+                st.get("connected", 0), st.get("limit", 0),
+            )
+        try:
+            slot_status = await wait_for_slot(ns.server, on_wait=_on_queue_wait)
+            log.info(
+                "slot available (%d/%d), proceeding with join",
+                slot_status.get("connected", 0), slot_status.get("limit", 0),
+            )
+        except Exception as e:
+            log.warning("could not check remote status: %s (continuing anyway)", e)
         try:
             join = await http_join(
                 ns.server, name=ns.name, personality_seed=ns.seed,
