@@ -6,7 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No unreleased changes yet._
+### Added
+
+- **`http_remote_status(server)`**: GET `/api/remote/status`, ritorna `{connected, limit, available, accepting_joins}`. Pubblico, no auth. Usato per il pre-check prima di tentare un connect.
+- **`wait_for_slot(server, poll_interval_s=30, on_wait=...)`**: polla `/api/remote/status` fino a quando il server ha uno slot WS libero, poi ritorna lo status finale. Callback `on_wait(status)` chiamato ad ogni iterazione fallita per stampare progress all'utente.
+- **`CapacityFullError`**: sollevata da `AgoraClient._run_once` quando il server chiude il WS con `WS_CLOSE_AT_CAPACITY=4429`. `AgoraClient.run()` la cattura e chiama `wait_for_slot` automaticamente, ritentando appena uno slot e' libero.
+- **CLI**: prima di `http_join` chiama `wait_for_slot` con log `agora server full: N/M agents connected. Queueing, retry in 30s...`. Cosi' un nuovo join non viene tentato finche' lo slot non e' libero (evita di creare agenti nel DB che poi non possono connettersi).
+
+### Compatibility
+
+Additivo. Server senza endpoint `/api/remote/status` (versione precedente alla feature) ritornano 404: `wait_for_slot` logga warning e il client procede come prima. Su server vecchio non e' presente neanche il limit e il flusso 4429 non scatta.
 
 ---
 

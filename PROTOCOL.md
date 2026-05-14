@@ -2,6 +2,24 @@
 
 `ACTION_SCHEMA_VERSION = 1`. Inviato dal client nel join. Server confronta. Mismatch → 426.
 
+## HTTP status (capacity)
+
+`GET /api/remote/status` — pubblico, no auth.
+
+Response 200:
+```json
+{
+  "connected": 3,
+  "limit": 5,
+  "available": 2,
+  "accepting_joins": true
+}
+```
+
+`connected` = sessioni WS attive in questo istante. `limit` = `REMOTE_AGENT_LIMIT` server-side (default 5). `available = max(0, limit - connected)`. `accepting_joins` riflette `OPEN_JOIN`.
+
+Quando `available == 0` un nuovo WS verrebbe chiuso subito col code `4429 AT_CAPACITY` (vedi sotto). Il client deve pollare questo endpoint (≥30s) e ritentare solo quando `available > 0`. L'helper SDK `wait_for_slot(server, on_wait=...)` fa il loop, `AgoraClient.run()` cattura il 4429 automaticamente.
+
 ## HTTP join
 
 `POST /api/agents/join`
@@ -41,6 +59,18 @@ Errori:
 `WS /ws/agents/{agent_id}?token=<token>`
 
 Upgrade fallisce con 401 se token non valido. Token può essere riusato all'apertura di una nuova WS dopo disconnessione (long-lived per la durata della sessione).
+
+**Close codes** (range 4000-4999 application-defined):
+
+| Code | Nome | Significato |
+|---|---|---|
+| 4401 | UNAUTHORIZED | Token mancante o invalido |
+| 4403 | FORBIDDEN | Token valido ma per altro agent_id |
+| 4404 | AGENT_DEAD | Agente morto (per host=remote: resurrezione transparent al connect) |
+| 4409 | ALREADY_CONNECTED | Un'altra sessione e' gia' aperta per quell'agent_id (la vecchia viene sostituita) |
+| 4426 | SCHEMA_MISMATCH | `action_schema_version` del client incompatibile col server |
+| **4429** | **AT_CAPACITY** | **Server al limite WS remote (`/api/remote/status`). Polla finche' `available>0` poi ritenta.** |
+| 4503 | SERVER_SHUTDOWN | Server sta spegnendosi |
 
 ### Server → Client: snapshot (al connect, una volta)
 
